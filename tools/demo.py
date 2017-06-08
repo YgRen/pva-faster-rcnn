@@ -14,7 +14,7 @@ See README.md for installation instructions before running.
 """
 
 import _init_paths
-from fast_rcnn.config import cfg
+from fast_rcnn.config import cfg, cfg_from_file, cfg_from_list, get_output_dir
 from fast_rcnn.test import im_detect
 from fast_rcnn.nms_wrapper import nms
 from utils.timer import Timer
@@ -31,10 +31,6 @@ CLASSES = ('__background__',
            'motorbike', 'person', 'pottedplant',
            'sheep', 'sofa', 'train', 'tvmonitor')
 
-NETS = {'vgg16': ('VGG16',
-                  'VGG16_faster_rcnn_final.caffemodel'),
-        'zf': ('ZF',
-                  'ZF_faster_rcnn_final.caffemodel')}
 
 
 def vis_detections(im, class_name, dets, thresh=0.5):
@@ -79,7 +75,8 @@ def demo(net, image_name):
     # Detect all object classes and regress object bounds
     timer = Timer()
     timer.tic()
-    scores, boxes = im_detect(net, im)
+    _t = {'im_preproc': Timer(), 'im_net' : Timer(), 'im_postproc': Timer(), 'misc' : Timer()}
+    scores, boxes = im_detect(net, im, _t)
     timer.toc()
     print ('Detection took {:.3f}s for '
            '{:d} object proposals').format(timer.total_time, boxes.shape[0])
@@ -105,44 +102,48 @@ def parse_args():
     parser.add_argument('--cpu', dest='cpu_mode',
                         help='Use CPU mode (overrides --gpu)',
                         action='store_true')
-    parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16]',
-                        choices=NETS.keys(), default='vgg16')
+    parser.add_argument('--def', dest='prototxt',
+                        help='prototxt file defining the network',
+                        default=None, type=str)
+    parser.add_argument('--net', dest='caffemodel',
+                        help='model to test',
+                        default=None, type=str)
 
     args = parser.parse_args()
 
     return args
 
 if __name__ == '__main__':
-    cfg.TEST.HAS_RPN = True  # Use RPN for proposals
-
     args = parse_args()
+    cfg.TEST.HAS_RPN = True  # Use RPN for proposals
+    cfg.TEST.SCALE_MULTIPLE_OF=32
+    cfg.TEST.MAX_SIZE=2000
+    cfg.TEST.SCALES=(640,)
+    cfg.TEST.BBOX_VOTE= True
+    cfg.TEST.NMS=0.4
+    cfg.TEST.RPN_PRE_NMS_TOP_N=12000
+    cfg.TEST.RPN_POST_NMS_TOP_N=200
+    args = parse_args()
+   
+    while not os.path.exists(args.caffemodel) and args.wait:
+        print('Waiting for {} to exist...'.format(args.caffemodel))
+        time.sleep(10)
 
-    prototxt = os.path.join(cfg.MODELS_DIR, NETS[args.demo_net][0],
-                            'faster_rcnn_alt_opt', 'faster_rcnn_test.pt')
-    caffemodel = os.path.join(cfg.DATA_DIR, 'faster_rcnn_models',
-                              NETS[args.demo_net][1])
+    caffe.set_mode_gpu()
+    caffe.set_device(args.gpu_id)
+    net = caffe.Net(args.prototxt, args.caffemodel, caffe.TEST)
+    net.name = os.path.splitext(os.path.basename(args.caffemodel))[0]
 
-    if not os.path.isfile(caffemodel):
-        raise IOError(('{:s} not found.\nDid you run ./data/script/'
-                       'fetch_faster_rcnn_models.sh?').format(caffemodel))
-
-    if args.cpu_mode:
-        caffe.set_mode_cpu()
-    else:
-        caffe.set_mode_gpu()
-        caffe.set_device(args.gpu_id)
-        cfg.GPU_ID = args.gpu_id
-    net = caffe.Net(prototxt, caffemodel, caffe.TEST)
-
-    print '\n\nLoaded network {:s}'.format(caffemodel)
 
     # Warmup on a dummy image
     im = 128 * np.ones((300, 500, 3), dtype=np.uint8)
+    _t = {'im_preproc': Timer(), 'im_net' : Timer(), 'im_postproc': Timer(), 'misc' : Timer()}
     for i in xrange(2):
-        _, _= im_detect(net, im)
+        _, _= im_detect(net, im, _t)
 
-    im_names = ['000456.jpg', '000542.jpg', '001150.jpg',
-                '001763.jpg', '004545.jpg']
+    im_names = ['000080.jpg', '000086.jpg', '000176.jpg',
+                '000508.jpg', '000846.jpg', '001248.jpg',
+                '004585.jpg', '005205.jpg', '009941.jpg']
     for im_name in im_names:
         print '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
         print 'Demo for data/demo/{}'.format(im_name)
