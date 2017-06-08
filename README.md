@@ -102,6 +102,9 @@ If you want to cite this work in your publication:
     cd $FRCN_ROOT
     ./tools/test_net.py --net models/pvanet/pva9.1/PVA9.1_ImgNet_COCO_VOC0712plus_compressed.caffemodel --def models/pvanet/pva9.1/faster_rcnn_train_test_ft_rcnn_only_plus_comp.pt --cfg models/pvanet/cfgs/submit_1019.yml --gpu 0
     ```
+ 4.Visualization:run the demo.py 
+ ./tools/demo.py --gpu 0 --def models/pvanet/comp/test.pt --net models/pvanet/comp/test.model
+ 
 
 ### Expected results
 
